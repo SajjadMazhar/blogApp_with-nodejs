@@ -3,7 +3,6 @@ require("dotenv").config()
 let SECRET_TOKEN="b97b29e9820e8f09ca8c607eb0752e1954b58741a75daef948e19cfe184b7b2dacae61c1e643e474cc5566497ef75713eeb0c8f137aaf81bbc7de5e8efc6b0cb"
 
 exports.createAccessToken = (user)=>{
-    console.log("here")
     return jwt.sign(user, SECRET_TOKEN);
 }
 

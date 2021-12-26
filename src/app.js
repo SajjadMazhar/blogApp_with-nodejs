@@ -2,31 +2,43 @@ const express = require("express");
 const app = express();
 const knex = require("../config/db")
 const {createAccessToken, verifyToken} = require("../auth/authe");
+const joi = require("joi")
 
 const port = 2013;
 app.use(express.json())
 
 // register login
 app.post("/register", async(req, res)=>{
-
-    const data2 = await req.body
-        knex("userDetails").where({email: data2.email, password: data2.password}).then(data=>{
-            if(data.length==0){
-                knex("userDetails").insert(data2).then(()=>{
-                    console.log("signed up")
-                    res.send("signed up successfully")
-                }).catch(err =>{
-                    console.log("error while signing up", err)
-                    res.send("some error occured")
-                })
-            }else{
-                console.log("user already exists")
-                res.send("duplicate entry")
-            }
-        }).catch(err=>{
-            console.log("error while searching user", err)
-            res.send("some error occured")
+    const Schema = joi.object({
+        name: joi.string().min(3).max(30).required(),
+        email: joi.string().email().min(5).max(50),
+        password: joi.string().min(8).max(16).required()
+    })
+    let validateSchema = Schema.validate(req.body);
+    if(validateSchema.error){
+        res.status(400).json({
+            message:validateSchema.error.message || "error while validation"
         })
+    }else{
+        const data2 = await req.body
+            knex("userDetails").where({email: data2.email, password: data2.password}).then(data=>{
+                if(data.length==0){
+                    knex("userDetails").insert(data2).then(()=>{
+                        console.log("signed up")
+                        res.status(201).send("signed up successfully")
+                    }).catch(err =>{
+                        console.log("error while signing up", err)
+                        res.send("some error occured")
+                    })
+                }else{
+                    console.log("user already exists")
+                    res.send("duplicate entry")
+                }
+            }).catch(err=>{
+                console.log("error while searching user", err)
+                res.send("some error occured")
+            })
+            }
 })
 
 app.post("/login", (req, res)=>{
@@ -35,7 +47,7 @@ app.post("/login", (req, res)=>{
             const token = createAccessToken(data[0].id);
             res.cookie("token", token).send("login successful")
         }else{
-            res.send("invalid email or password")
+            res.status(401).send("invalid email or password")
         }
     }).catch(err=>{
         res.send("error while logging in: ", err)
@@ -54,7 +66,7 @@ app.post("/posts", verifyToken, (req, res)=>{
     }
 
     knex("post").insert(userData).then(data=>{
-        res.send(data)
+        res.status(201).send(data)
     }).catch(err=>{
         console.log(err)
         res.send("error while posting post")
@@ -69,14 +81,14 @@ app.post("/post/:id/likedislike", verifyToken, (req, res)=>{
             let postStatus
             likeDisliked ? postStatus="liked" : postStatus="disliked";
             knex("likeDislikeStorage").where({unique_id:req.data, post_id:req.params.id}).then(presentData=>{
-                if(!presentData){
+                if((presentData.like == false && presentData.dislike == false) || presentData.length==0){
                     knex("likeDislikeStorage").insert({
                         unique_id:req.data,
                         post_id:req.params.id,
                         like:req.body.like || false,
                         dislike:req.body.dislike || false
                     }).then(()=>{
-                        res.send(`post ${postStatus}`)
+                        res.status(201).send(`post ${postStatus}`)
                     }).catch(err=>{
                         console.log("error: ", err.sqlMessage)
                         res.send("error while liking the post")
@@ -84,7 +96,7 @@ app.post("/post/:id/likedislike", verifyToken, (req, res)=>{
                 }else{
                     res.send("You already reacted to this")
                 }
-            }).catch(err=>{
+            }).catch(()=>{
                 res.send("error while searching likeDislike")
             })
         }
@@ -93,24 +105,26 @@ app.post("/post/:id/likedislike", verifyToken, (req, res)=>{
 
 })
 
-app.get("/getLikes", (req, res)=>{
-    knex("likeDislikeStorage").where({like:true}).then(data=>{
-        res.send({allLikes:data.length})
+app.get("/likes/:post_id", (req, res)=>{
+    knex("likeDislikeStorage").where({post_id:req.params.post_id, like:true}).then(data=>{
+        res.status(200).send({likes:data.length})
     }).catch(err=>{
-        res.send("error while getting likes count: ", err)
+        res.status(404).send(`post not found: ${err}`)
     })
 })
 
-app.get("/getDislikes", (req, res)=>{
-    knex("likeDislikeStorage").where({dislike:true}).then(data=>{
-        res.send({allDislikes:data.length})
+app.get("/dislikes/:post_id", (req, res)=>{
+    knex("likeDislikeStorage").where({post_id:req.params.post_id, dislike:true}).then(data=>{
+        res.status(200).send({dislikes:data.length})
+    }).catch(err=>{
+        res.status(404).send(`post not found: ${err}`)
     })
 })
 
 app.get("/logout", verifyToken, async (req, res)=>{
     try {
         console.log("loggged out")
-        res.clearCookie("token").send("logged out successfully")
+        res.clearCookie("token").status(200).send("logged out successfully")
     } catch (error) {
         res.send(error)
     }
